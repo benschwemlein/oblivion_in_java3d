@@ -7,9 +7,6 @@ A personal hack that parses The Elder Scrolls IV: Oblivion landscape mesh files 
 ![Oblivion original screenshot](18861_0_org.jpg)
 
 *This area of the game appears in the center of the rendered 3D map.*
-
-Reads `.nif` files from the `landscape/` directory, extracts triangle strip vertex data, and displays the terrain with basic directional lighting.
-
 ## NIF Format
 
 NIF (NetImmerse Format) is the binary mesh format used by Bethesda games. All values are little-endian.
