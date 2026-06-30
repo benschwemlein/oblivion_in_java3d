@@ -8,46 +8,42 @@ Reads `.nif` files from the `landscape/` directory, extracts triangle strip vert
 
 ## NIF Format
 
-NIF (NetImmerse Format) is the binary mesh format used by Bethesda games. These landscape files are little-endian and don't follow the full NIF spec cleanly, so parsing is done by scanning for known markers rather than walking a block table.
+NIF (NetImmerse Format) is the binary mesh format used by Bethesda games. All values are little-endian.
 
-### File layout (as parsed here)
+### Triangle strips
+
+What we want out of each file is a triangle strip — an efficient way to encode a mesh where every vertex after the first two implicitly forms a triangle with the previous two. N vertices = N-2 triangles, with no repeated vertex data. The GPU renders these directly with a single draw call.
+
+Each Oblivion landscape `.nif` contains one `NiTriStripsData` block holding:
+- A vertex array — the XYZ positions of every point in the terrain mesh
+- One or more strip index arrays — sequences of indices into the vertex array that define the triangle strips
+
+### File layout
 
 ```
-[header]
-  "Gamebryo File Format, Version 20.2.0.7\n"  — fixed ASCII string
-  followed by version bytes and flags
-  total: 48 bytes skipped
+Offset 0
+  [header]            "Gamebryo File Format, Version 20.2.0.7\n" + version bytes + flags
+                      48 bytes total
 
-[block count]        uint32  — number of blocks in the file
+Offset 48
+  [block count]       uint32  — number of blocks in the file
+  [block type count]  uint32  — number of distinct block type name strings
+  [block type names]  null-terminated ASCII strings  e.g. "NiTriStripsData", "NiNode"
+  [block type index]  uint16 per block — maps each block to a type name
+  [null refs]         0xFFFFFFFF sentinels separating block reference lists
 
-[block type count]   uint32  — number of distinct block type strings
+  --- locate the 3rd 0xFFFFFFFF sentinel ---
 
-[block type strings] null-terminated ASCII strings, one per type
-                     e.g. "NiTriStripsData", "NiNode", ...
+  [vertex count]      uint16
+  [vertices]          vertex_count × 12 bytes  (float x, float y, float z, little-endian)
+                      Z-up coordinate system — swapped to Y-up at load time
 
-[block type indices] uint16 per block — which type string each block is
+  --- locate the next 0xFFFFFFFF sentinel ---
 
-[null refs]          0xFFFFFFFF repeated — block reference sentinels
-
---- scan from here ---
-
-Skip to the 3rd 0xFFFFFFFF sentinel. The block immediately after is
-a NiTriStripsData block containing:
-
-  [vertex count]   uint16
-  [vertices]       vertex_count × (float x, float y, float z)  — 12 bytes each
-                   coordinate system is Z-up; converted to Y-up at render time
-
-Skip to the next 0xFFFFFFFF sentinel after the vertex array. Then:
-
-  [strip count]    uint16
-  [strip lengths]  strip_count × uint16
-  [strip indices]  indices into the vertex array, forming triangle strips
+  [strip count]       uint16
+  [strip lengths]     strip_count × uint16  — length of each strip
+  [strip indices]     uint16 per entry — indices into the vertex array, one run per strip
 ```
-
-### Why scan instead of parse properly?
-
-The block table approach would require implementing the full NIF spec across many block types. Since we only need one block (NiTriStripsData) per file and its position relative to the sentinel refs is consistent across all Oblivion landscape tiles, scanning is simpler and more robust for this specific use case.
 
 ### Coordinate system
 
