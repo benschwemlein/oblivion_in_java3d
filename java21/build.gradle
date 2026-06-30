@@ -1,0 +1,29 @@
+plugins {
+    id 'application'
+}
+
+application {
+    mainClass = 'Main'
+}
+
+dependencies {
+    implementation fileTree('../java/java3d') { include '**/*.jar' }
+}
+
+compileJava {
+    sourceCompatibility = '21'
+    targetCompatibility = '21'
+    options.release = 21
+}
+
+sourceSets {
+    main {
+        java { srcDirs = ['src'] }
+    }
+}
+
+tasks.jar {
+    manifest { attributes 'Main-Class': 'Main' }
+    from configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
