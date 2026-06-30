@@ -1,108 +1,184 @@
-import com.sun.j3d.utils.behaviors.mouse.MouseRotate
-import com.sun.j3d.utils.behaviors.mouse.MouseTranslate
-import com.sun.j3d.utils.behaviors.mouse.MouseZoom
-import com.sun.j3d.utils.geometry.NormalGenerator
-import com.sun.j3d.utils.geometry.Stripifier
-import com.sun.j3d.utils.geometry.GeometryInfo
-import com.sun.j3d.utils.universe.SimpleUniverse
-import java.awt.BorderLayout
+import org.joml.Matrix4f
+import org.lwjgl.BufferUtils
+import org.lwjgl.glfw.Callbacks.glfwFreeCallbacks
+import org.lwjgl.glfw.GLFW.*
+import org.lwjgl.glfw.GLFWErrorCallback
+import org.lwjgl.opengl.GL
+import org.lwjgl.opengl.GL33.*
+import org.lwjgl.system.MemoryStack
+import org.lwjgl.system.MemoryUtil.NULL
 import java.io.File
-import javax.media.j3d.*
-import javax.swing.JFrame
-import javax.vecmath.*
-import kotlin.math.sqrt
+import kotlin.math.*
 
 fun main() {
-    val landscapeDir = File("../landscape")
-    LandscapeViewer(landscapeDir).show()
+    LandscapeViewer(File("../landscape")).run()
 }
+
+private val VERT = """
+    #version 330 core
+    layout(location = 0) in vec3 pos;
+    uniform mat4 viewProj;
+    out vec3 worldPos;
+    void main() {
+        gl_Position = viewProj * vec4(pos, 1.0);
+        worldPos = pos;
+    }
+""".trimIndent()
+
+private val FRAG = """
+    #version 330 core
+    in vec3 worldPos;
+    out vec4 fragColor;
+    void main() {
+        vec3 n = normalize(cross(dFdx(worldPos), dFdy(worldPos)));
+        float d = clamp(dot(n, normalize(vec3(0.1, 0.3, 0.3))), 0.15, 1.0);
+        fragColor = vec4(0.0, d, 0.1 * d, 1.0);
+    }
+""".trimIndent()
 
 class LandscapeViewer(private val landscapeDir: File) {
 
-    fun show() {
-        val canvas = Canvas3D(SimpleUniverse.getPreferredConfiguration())
+    private data class Mesh(val vao: Int, val count: Int)
 
-        SimpleUniverse(canvas).apply {
-            viewingPlatform.setNominalViewingTransform()
-            addBranchGraph(buildScene())
-        }
+    private var yaw = 0f;  private var pitch = 0.4f; private var zoom = 500_000f
+    private var panX = 0f; private var panY = 0f;    private var panZ = 0f
+    private var lastX = 0.0; private var lastY = 0.0
+    private var mouseLeft = false; private var mouseRight = false
 
-        JFrame("Oblivion Landscape — Kotlin/Java3D").apply {
-            defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-            contentPane.add(canvas, BorderLayout.CENTER)
-            setSize(1000, 800)
-            isVisible = true
-        }
-    }
+    fun run() {
+        GLFWErrorCallback.createPrint(System.err).set()
+        glfwInit()
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3)
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3)
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE)
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE)
 
-    private fun buildScene(): BranchGroup {
-        val bounds = BoundingSphere(Point3d(), Double.MAX_VALUE)
+        val window = glfwCreateWindow(1200, 800, "Oblivion Landscape — Kotlin/LWJGL", NULL, NULL)
+        glfwMakeContextCurrent(window)
+        glfwSwapInterval(1)
+        glfwShowWindow(window)
+        GL.createCapabilities()
 
-        val orbitGroup = TransformGroup().apply {
-            setCapability(TransformGroup.ALLOW_TRANSFORM_WRITE)
-            setCapability(TransformGroup.ALLOW_TRANSFORM_READ)
-            addChild(directionalLight(bounds))
-            addChild(landscape())
-            addChild(MouseRotate().also    { it.transformGroup = this; it.schedulingBounds = bounds })
-            addChild(MouseZoom().also      { it.setFactor(1000.0); it.transformGroup = this; it.schedulingBounds = bounds })
-            addChild(MouseTranslate().also { it.transformGroup = this; it.schedulingBounds = bounds })
-        }
-
-        val scaleGroup = TransformGroup(Transform3D().apply { setScale(0.00002) }).apply {
-            addChild(orbitGroup)
-        }
-
-        return BranchGroup().apply {
-            addChild(scaleGroup)
-            compile()
-        }
-    }
-
-    private fun landscape(): Group {
-        val nifFiles = landscapeDir.listFiles { f -> f.extension == "nif" }
-            ?.sorted() ?: return Group()
-
-        val cols = sqrt(nifFiles.size.toDouble()).toInt().coerceAtLeast(1)
-
-        return Group().apply {
-            nifFiles.forEachIndexed { i, file ->
-                val xOffset = (i % cols) * 131_072f
-                val yOffset = (i / cols) * 131_072f
-                runCatching { addChild(meshFor(file, xOffset, yOffset)) }
-                    .onFailure { println("skip ${file.name}: ${it.message}") }
+        glfwSetMouseButtonCallback(window) { w, button, action, _ ->
+            if (button == GLFW_MOUSE_BUTTON_LEFT)  mouseLeft  = action == GLFW_PRESS
+            if (button == GLFW_MOUSE_BUTTON_RIGHT) mouseRight = action == GLFW_PRESS
+            if (action == GLFW_PRESS) {
+                MemoryStack.stackPush().use { stack ->
+                    val xb = stack.mallocDouble(1); val yb = stack.mallocDouble(1)
+                    glfwGetCursorPos(w, xb, yb)
+                    lastX = xb.get(0); lastY = yb.get(0)
+                }
             }
         }
-    }
 
-    private fun meshFor(file: File, xOffset: Float, yOffset: Float): Shape3D {
-        val vertices = parseNif(file)
-        val largest  = vertices.flatMap { listOf(it.x, it.y, it.z) }.maxOrNull() ?: 0f
-
-        val gi = GeometryInfo(GeometryInfo.TRIANGLE_STRIP_ARRAY).apply {
-            coordinates = vertices.map { v ->
-                Point3f(v.x - largest / 2 + xOffset, v.y - largest / 2 + yOffset, v.z - largest)
-            }.toTypedArray()
-            stripCounts = intArrayOf(vertices.size)
+        glfwSetCursorPosCallback(window) { _, x, y ->
+            val dx = (x - lastX).toFloat()
+            val dy = (y - lastY).toFloat()
+            when {
+                mouseLeft  -> {
+                    yaw   -= dx * 0.005f
+                    pitch  = (pitch + dy * 0.005f).coerceIn(-1.4f, 1.4f)
+                }
+                mouseRight -> {
+                    val speed = zoom * 0.001f
+                    panX -= cos(yaw) * dx * speed
+                    panZ += sin(yaw) * dx * speed
+                    panY += dy * speed
+                }
+            }
+            lastX = x; lastY = y
         }
 
-        NormalGenerator().generateNormals(gi)
-        Stripifier().stripify(gi)
-        gi.indexify()
-        gi.recomputeIndices()
+        glfwSetScrollCallback(window) { _, _, dy ->
+            zoom = (zoom * (1f - dy.toFloat() * 0.15f)).coerceIn(1f, 1e9f)
+        }
 
-        return Shape3D(gi.geometryArray, appearance())
+        val program = buildProgram()
+        val vpLoc   = glGetUniformLocation(program, "viewProj")
+        val meshes  = loadMeshes()
+        val vpBuf   = BufferUtils.createFloatBuffer(16)
+
+        glEnable(GL_DEPTH_TEST)
+        glClearColor(0.05f, 0.05f, 0.1f, 1f)
+
+        while (!glfwWindowShouldClose(window)) {
+            glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+
+            MemoryStack.stackPush().use { stack ->
+                val wb = stack.mallocInt(1); val hb = stack.mallocInt(1)
+                glfwGetFramebufferSize(window, wb, hb)
+                glViewport(0, 0, wb.get(0), hb.get(0))
+
+                val aspect = wb.get(0).toFloat() / hb.get(0)
+                val ex = panX + sin(yaw) * cos(pitch) * zoom
+                val ey = panY + sin(pitch) * zoom
+                val ez = panZ + cos(yaw) * cos(pitch) * zoom
+
+                val vp = Matrix4f()
+                    .perspective(0.8f, aspect, 1f, 1e10f)
+                    .mul(Matrix4f().lookAt(ex, ey, ez, panX, panY, panZ, 0f, 1f, 0f))
+
+                glUseProgram(program)
+                glUniformMatrix4fv(vpLoc, false, vp.get(vpBuf))
+            }
+
+            meshes.forEach { (vao, count) ->
+                glBindVertexArray(vao)
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, count)
+            }
+
+            glfwSwapBuffers(window)
+            glfwPollEvents()
+        }
+
+        glfwFreeCallbacks(window)
+        glfwDestroyWindow(window)
+        glfwTerminate()
     }
 
-    private fun appearance() = Appearance().apply {
-        coloringAttributes = ColoringAttributes(0f, 1f, 0.1f, ColoringAttributes.SHADE_FLAT)
-        material = Material().apply { setLightingEnable(true) }
+    private fun loadMeshes(): List<Mesh> {
+        val files = landscapeDir.listFiles { f -> f.extension == "nif" }?.sorted() ?: return emptyList()
+        val cols  = ceil(sqrt(files.size.toDouble())).toInt()
+
+        return files.mapIndexedNotNull { i, file ->
+            val xOff = (i % cols) * 131_072f
+            val zOff = (i / cols) * 131_072f
+            runCatching {
+                val verts = parseNif(file)
+                if (verts.isEmpty()) return@runCatching null
+
+                // NIF is Z-up; convert to Y-up (swap y and z)
+                val buf = BufferUtils.createFloatBuffer(verts.size * 3).also { buf ->
+                    verts.forEach { v -> buf.put(v.x + xOff).put(v.z).put(v.y + zOff) }
+                    buf.flip()
+                }
+
+                val vao = glGenVertexArrays(); val vbo = glGenBuffers()
+                glBindVertexArray(vao)
+                glBindBuffer(GL_ARRAY_BUFFER, vbo)
+                glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW)
+                glVertexAttribPointer(0, 3, GL_FLOAT, false, 12, 0)
+                glEnableVertexAttribArray(0)
+
+                println("loaded ${file.name}: ${verts.size} vertices")
+                Mesh(vao, verts.size)
+            }.onFailure { println("skip ${file.name}: ${it.message}") }.getOrNull()
+        }
     }
 
-    private fun directionalLight(bounds: BoundingSphere) = DirectionalLight(
-        Color3f(1f, 1f, 1f),
-        Vector3f(-0.1f, -0.3f, -0.3f)
-    ).apply {
-        influencingBounds = bounds
-        setCapability(Light.ALLOW_STATE_WRITE)
+    private fun buildProgram() = glCreateProgram().also { prog ->
+        val shaders = listOf(GL_VERTEX_SHADER to VERT, GL_FRAGMENT_SHADER to FRAG)
+            .map { (type, src) -> compileShader(type, src) }
+        shaders.forEach { glAttachShader(prog, it) }
+        glLinkProgram(prog)
+        shaders.forEach { glDeleteShader(it) }
+    }
+
+    private fun compileShader(type: Int, src: String) = glCreateShader(type).also { shader ->
+        glShaderSource(shader, src)
+        glCompileShader(shader)
+        check(glGetShaderi(shader, GL_COMPILE_STATUS) != GL_FALSE) {
+            "Shader error: ${glGetShaderInfoLog(shader)}"
+        }
     }
 }

@@ -1,14 +1,13 @@
-# Oblivion Landscape Viewer — Kotlin/Java3D
+# Oblivion Landscape Viewer — Kotlin/LWJGL
 
-A Kotlin port of the original Java version. Uses the same Java3D rendering but
-with idiomatic Kotlin — data classes, extension functions, `runCatching`, and
-no checked exceptions.
+A Kotlin port using [LWJGL](https://www.lwjgl.org/) for cross-platform OpenGL rendering.
 
 ## Requirements
 
 - JDK 11+
-- Gradle (or use the wrapper once added)
-- Windows (Java3D natives are Windows-only)
+- Gradle
+
+Runs on Windows, macOS, and Linux (LWJGL natives for all platforms are bundled).
 
 ## Running
 
@@ -17,20 +16,31 @@ cd kotlin
 gradle run
 ```
 
-Or build a fat jar:
+## Controls
 
-```sh
-gradle jar
-java -jar build/libs/oblivion-kotlin.jar
-```
-
-## What's different from the Java version
-
-| Java | Kotlin |
+| Input | Action |
 |---|---|
-| `class NifSVertex` with getters | `data class Vertex(val x, val y, val z)` |
-| `NifInputStream` (250 lines) | `ByteBuffer` + 3 extension functions (15 lines) |
-| Checked exceptions everywhere | `runCatching { }` |
-| `new ArrayList<>()`, `files.get(i)` | `listOf()`, index operator, `map`/`filter` |
-| `new BranchGroup(); root.addChild(...)` | `BranchGroup().apply { addChild(...) }` |
-| ~450 lines total | ~100 lines total |
+| Left-drag | Orbit camera |
+| Right-drag | Pan |
+| Scroll wheel | Zoom in/out |
+
+## Kotlin vs Java 21
+
+Both versions are roughly the same length. The Kotlin differences are stylistic:
+
+| Java 21 | Kotlin |
+|---|---|
+| `try (var stack = stackPush()) { ... }` | `MemoryStack.stackPush().use { stack -> ... }` |
+| Lambda callbacks with explicit types | Trailing lambdas, type inference |
+| `Math.clamp(...)` | `.coerceIn(...)` |
+| `for (var mesh : meshes)` | `meshes.forEach { (vao, count) -> }` with destructuring |
+| `try { } catch (Exception e) { }` | `runCatching { }.onFailure { }` |
+| `glClear(A \| B)` | `glClear(A or B)` |
+| Local `record Mesh(int vao, int count)` | `private data class Mesh(val vao: Int, val count: Int)` |
+| `buildProgram()` — create, attach, link, delete, return | `buildProgram()` — `.also { }` chaining |
+
+## Why LWJGL over Java3D
+
+- Java3D is abandonware (last release 2016), Windows-only natives
+- LWJGL is actively maintained, cross-platform, used by Minecraft
+- Same GLSL shader approach as the Rust and Python versions

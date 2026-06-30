@@ -6,20 +6,34 @@ application {
     mainClass = 'Main'
 }
 
+ext {
+    lwjglVersion = '3.3.3'
+    jomlVersion  = '1.10.5'
+}
+
+repositories {
+    mavenCentral()
+}
+
 dependencies {
-    implementation fileTree('../java/java3d') { include '**/*.jar' }
+    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+    ['lwjgl', 'lwjgl-glfw', 'lwjgl-opengl'].each { lib ->
+        implementation "org.lwjgl:${lib}"
+        // Include natives for all platforms so the jar runs anywhere
+        runtimeOnly "org.lwjgl:${lib}::natives-windows"
+        runtimeOnly "org.lwjgl:${lib}::natives-macos"
+        runtimeOnly "org.lwjgl:${lib}::natives-macos-arm64"
+        runtimeOnly "org.lwjgl:${lib}::natives-linux"
+    }
+    implementation "org.joml:joml:${jomlVersion}"
 }
 
 compileJava {
-    sourceCompatibility = '21'
-    targetCompatibility = '21'
     options.release = 21
 }
 
 sourceSets {
-    main {
-        java { srcDirs = ['src'] }
-    }
+    main { java { srcDirs = ['src'] } }
 }
 
 tasks.jar {

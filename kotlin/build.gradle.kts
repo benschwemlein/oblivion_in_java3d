@@ -7,13 +7,23 @@ application {
     mainClass.set("MainKt")
 }
 
+val lwjglVersion = "3.3.3"
+val jomlVersion  = "1.10.5"
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    // Reuse the Java3D jars bundled with the java/ version of this project
-    implementation(fileTree("../java/java3d") { include("**/*.jar") })
+    implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
+    listOf("lwjgl", "lwjgl-glfw", "lwjgl-opengl").forEach { lib ->
+        implementation("org.lwjgl:$lib")
+        runtimeOnly("org.lwjgl:$lib::natives-windows")
+        runtimeOnly("org.lwjgl:$lib::natives-macos")
+        runtimeOnly("org.lwjgl:$lib::natives-macos-arm64")
+        runtimeOnly("org.lwjgl:$lib::natives-linux")
+    }
+    implementation("org.joml:joml:$jomlVersion")
 }
 
 tasks.jar {

@@ -11,8 +11,8 @@ Reads `.nif` files from the `landscape/` directory, extracts triangle strip vert
 | Directory | Language | 3D Library |
 |---|---|---|
 | `java/` | Java | Java3D |
-| `java21/` | Java 21 | Java3D |
-| `kotlin/` | Kotlin | Java3D |
+| `java21/` | Java 21 | LWJGL |
+| `kotlin/` | Kotlin | LWJGL |
 | `rust/` | Rust | wgpu |
 | `python/` | Python | wgpu-py |
 
