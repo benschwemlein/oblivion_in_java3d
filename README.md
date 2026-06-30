@@ -2,6 +2,8 @@
 
 ![Oblivion landscape](oblivion.jpg)
 
+![Oblivion original screenshot](18861_0_org.jpg)
+
 A personal hack that parses The Elder Scrolls IV: Oblivion landscape mesh files (.nif format) and renders them in 3D. Built for fun.
 
 Reads `.nif` files from the `landscape/` directory, extracts triangle strip vertex data, and displays the terrain with basic directional lighting.
