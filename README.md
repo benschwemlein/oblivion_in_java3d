@@ -10,7 +10,7 @@ Reads `.nif` files from the `landscape/` directory, extracts triangle strip vert
 
 | Directory | Language | 3D Library |
 |---|---|---|
-| `src/` | Java | Java3D |
+| `java/` | Java | Java3D |
 | `rust/` | Rust | wgpu |
 | `python/` | Python | wgpu-py |
 
@@ -18,8 +18,8 @@ Reads `.nif` files from the `landscape/` directory, extracts triangle strip vert
 
 **Java** — requires Java3D (Windows natives included in `java3d/`):
 ```sh
-javac src/*.java
-java -cp src Nif landscape/
+javac java/*.java
+java -cp java startgui
 ```
 
 **Rust:**
